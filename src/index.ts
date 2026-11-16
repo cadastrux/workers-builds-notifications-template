@@ -18,6 +18,7 @@ import { fetchBuildUrls, fetchBuildLogs } from "./api";
 import { buildSlackPayload, sendSlackNotification } from "./slack";
 import { Budget, getAccountIds, syncSubscriptions } from "./subscriptions";
 import { checkPagesFailures } from "./pages";
+import { pendingKey, rememberFailure, resolvePending } from "./state";
 
 /** Intervalo do cron (wrangler.jsonc: "*\/5 * * * *"). */
 const CRON_INTERVAL_MS = 5 * 60 * 1000;
@@ -76,6 +77,17 @@ export default {
 				}
 
 				const status = getBuildStatus(event);
+				const workerName = event.source?.workerName;
+				const key = workerName ? pendingKey("worker", event.metadata.accountId, workerName) : null;
+
+				// Sucesso: apaga a mensagem de falha anterior (se houver)
+				if (status.isSucceeded && key && (await resolvePending(env, key))) {
+					console.log(`${workerName} voltou a funcionar, mensagem apagada.`);
+				}
+				if (status.isSucceeded && env.NOTIFY_SUCCESS !== "true") {
+					message.ack();
+					continue;
+				}
 
 				// Fetch additional data based on build status
 				let previewUrl: string | null = null;
@@ -90,7 +102,12 @@ export default {
 
 				// Build and send Slack notification
 				const payload = buildSlackPayload(event, previewUrl, liveUrl, logs);
-				await sendSlackNotification(env.SLACK_WEBHOOK_URL, payload);
+				const messageId = await sendSlackNotification(env.SLACK_WEBHOOK_URL, payload);
+
+				// Falha: guarda o id para apagar quando a build passar
+				if (status.isFailed && !status.isCancelled && key) {
+					await rememberFailure(env, key, messageId);
+				}
 
 				message.ack();
 			} catch (error) {

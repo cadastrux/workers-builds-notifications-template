@@ -18,6 +18,11 @@
 	"triggers": {
 		"crons": ["*/5 * * * *"]
 	},
+	/**
+	 * KV para guardar as mensagens de falha e apagá-las quando a build passar.
+	 * Sem "id": o wrangler cria o namespace automaticamente no primeiro deploy.
+	 */
+	"kv_namespaces": [{ "binding": "STATE" }],
 	"assets": {
 		"directory": "./public"
 	},

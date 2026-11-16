@@ -31,7 +31,7 @@ describe("syncSubscriptions (auto-subscribe)", () => {
 				return json({
 					success: true,
 					result: [
-						{ source: { type: "workersBuilds.worker", worker_name: "site-ja-assinado" }, destination: { queue_id: QID } },
+						{ id: "s1", events: ["build.failed"], source: { type: "workersBuilds.worker", worker_name: "site-ja-assinado" }, destination: { queue_id: QID } },
 						{ source: { type: "workersBuilds.worker", worker_name: "site-outra-fila" }, destination: { queue_id: "outra" } },
 					],
 					result_info: { page: 1, total_pages: 1 },
@@ -52,6 +52,8 @@ describe("syncSubscriptions (auto-subscribe)", () => {
 					? json({ success: false, errors: [{ code: 404, message: "not found" }] }, 404)
 					: json({ success: true, result: {} });
 			}
+			if (path.startsWith(`/accounts/${ACC}/event_subscriptions/subscriptions/`) && method === "PATCH")
+				return json({ success: true, result: {} });
 			if (path === `/accounts/${ACC}/event_subscriptions/subscriptions` && method === "POST")
 				return json({ success: true, result: { id: "new" } });
 			return json({ success: false }, 500);
@@ -70,10 +72,15 @@ describe("syncSubscriptions (auto-subscribe)", () => {
 		expect(names).toEqual(["site-novo", "site-outra-fila"]);
 		expect(posts[0].body).toMatchObject({
 			enabled: true,
-			events: ["build.failed"],
+			events: ["build.failed", "build.succeeded"],
 			source: { type: "workersBuilds.worker" },
 			destination: { type: "queues.queue", queue_id: QID },
 		});
+		// assinatura antiga (só build.failed) ganha build.succeeded
+		const patch = calls.filter((c) => c.method === "PATCH");
+		expect(patch).toHaveLength(1);
+		expect(patch[0].url).toContain("/event_subscriptions/subscriptions/s1");
+		expect(patch[0].body.events).toEqual(["build.failed", "build.succeeded"]);
 		// não consulta build de quem já está assinado
 		expect(calls.some((c) => c.url.endsWith("/builds/workers/t1"))).toBe(false);
 	});

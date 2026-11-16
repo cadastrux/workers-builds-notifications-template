@@ -11,6 +11,10 @@ export interface Env {
 	CLOUDFLARE_API_TOKEN: string;
 	/** Opcional: ID da conta. Se vazio, o auto-subscribe lista as contas do token. */
 	ACCOUNT_ID?: string;
+	/** KV para guardar as mensagens de falha e apagá-las quando a build passar. */
+	STATE?: KVNamespace;
+	/** "true" para também enviar mensagens de sucesso (padrão: só falhas). */
+	NOTIFY_SUCCESS?: string;
 }
 
 // =============================================================================

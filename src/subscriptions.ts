@@ -17,8 +17,8 @@ const API = "https://api.cloudflare.com/client/v4";
 /** Nome da fila consumida por este Worker (igual ao wrangler.jsonc). */
 const QUEUE_NAME = "builds-event-subscriptions";
 
-/** Eventos assinados para cada Worker. */
-const EVENTS = ["build.failed"];
+/** Eventos assinados para cada Worker (sucesso serve para apagar o aviso de falha). */
+export const EVENTS = ["build.failed", "build.succeeded"];
 
 /**
  * O plano Free permite 50 subrequests por execução. Guardamos uma margem
@@ -39,6 +39,9 @@ interface Script {
 }
 
 interface Subscription {
+	id: string;
+	name?: string;
+	events?: string[];
 	source: { type: string; worker_name?: string };
 	destination: { queue_id: string };
 }
@@ -121,6 +124,7 @@ async function syncAccount(env: Env, budget: Budget, accountId: string): Promise
 
 	// 2. Workers que já têm assinatura para esta fila
 	const subscribed = new Set<string>();
+	const outdated: Subscription[] = [];
 	for (let page = 1; ; page++) {
 		const subs = await cf<Subscription[]>(
 			env,
@@ -138,10 +142,30 @@ async function syncAccount(env: Env, budget: Budget, accountId: string): Promise
 				s.destination?.queue_id === queue.queue_id
 			) {
 				subscribed.add(s.source.worker_name);
+				if (EVENTS.some((e) => !s.events?.includes(e))) outdated.push(s);
 			}
 		}
 		const totalPages = subs.body.result_info?.total_pages ?? 1;
 		if (page >= totalPages) break;
+	}
+
+	// 2b. Assinaturas antigas (só build.failed): acrescenta os eventos que faltam
+	let updated = 0;
+	for (const s of outdated) {
+		if (budget.used + 1 > MAX_REQUESTS) break;
+		const events = [...new Set([...(s.events ?? []), ...EVENTS])];
+		const res = await cf<unknown>(env, budget, `${base}/event_subscriptions/subscriptions/${s.id}`, {
+			method: "PATCH",
+			body: JSON.stringify({ events }),
+		});
+		if (res.body?.success) {
+			updated++;
+			console.log(`[auto-subscribe] Eventos atualizados para ${s.source.worker_name}: ${events.join(", ")}`);
+		} else {
+			console.error(
+				`[auto-subscribe] Falha ao atualizar ${s.source.worker_name} (HTTP ${res.status}): ${describe(res.body)}`,
+			);
+		}
 	}
 
 	// 3. Workers da conta
@@ -190,7 +214,7 @@ async function syncAccount(env: Env, budget: Budget, accountId: string): Promise
 	}
 
 	console.log(
-		`[auto-subscribe] ${accountId}: ${subscribed.size} já assinados, ${created} novos, ${budget.used} requisições.`,
+		`[auto-subscribe] ${accountId}: ${subscribed.size} já assinados, ${updated} atualizados, ${created} novos, ${budget.used} requisições.`,
 	);
 }
 

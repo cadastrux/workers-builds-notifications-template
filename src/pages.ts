@@ -14,6 +14,7 @@ import type { SlackPayload } from "./slack";
 import { sendSlackNotification } from "./slack";
 import { extractBuildError } from "./helpers";
 import { Budget, cf, describe } from "./subscriptions";
+import { listPending, pendingKey, rememberFailure, resolvePending } from "./state";
 
 interface PagesDeployment {
 	id: string;
@@ -40,6 +41,11 @@ export function failedInWindow(d: PagesDeployment | null | undefined, from: numb
 	if (!stage || stage.status !== "failure" || !stage.ended_on) return false;
 	const ended = Date.parse(stage.ended_on);
 	return ended > from && ended <= to;
+}
+
+/** Implantação concluída com sucesso (última etapa "deploy" ok). */
+export function succeeded(d: PagesDeployment): boolean {
+	return d.latest_stage?.name === "deploy" && d.latest_stage?.status === "success";
 }
 
 function buildPagesFailurePayload(
@@ -99,10 +105,27 @@ export async function checkPagesFailures(
 			if (page >= total || res.body.result.length === 0) break;
 		}
 
+		const pending = await listPending(env, "pages", accountId);
+
 		let notified = 0;
+		let resolved = 0;
 		for (const p of projects) {
 			const d = p.latest_deployment;
-			if (!d || !failedInWindow(d, windowStart, windowEnd)) continue;
+			if (!d) continue;
+			const key = pendingKey("pages", accountId, p.name);
+
+			// Build voltou a passar: apaga a mensagem de falha do Discord
+			const prev = pending.get(key);
+			if (prev && succeeded(d) && (!prev.environment || prev.environment === d.environment)) {
+				budget.take();
+				if (await resolvePending(env, key, prev.messageId)) {
+					resolved++;
+					console.log(`[pages] ${p.name} voltou a funcionar, mensagem apagada.`);
+				}
+				continue;
+			}
+
+			if (!failedInWindow(d, windowStart, windowEnd)) continue;
 
 			let logs: string[] = [];
 			const logRes = await cf<PagesLogs>(env, budget, `${base}/${p.name}/deployments/${d.id}/history/logs`);
@@ -113,10 +136,17 @@ export async function checkPagesFailures(
 			}
 
 			budget.take(); // envio ao webhook também conta como subrequest
-			await sendSlackNotification(env.SLACK_WEBHOOK_URL, buildPagesFailurePayload(accountId, p.name, d, logs));
+			if (prev) budget.take(); // apagar a mensagem anterior do mesmo site
+			const messageId = await sendSlackNotification(
+				env.SLACK_WEBHOOK_URL,
+				buildPagesFailurePayload(accountId, p.name, d, logs),
+			);
+			await rememberFailure(env, key, messageId, d.environment);
 			notified++;
 		}
 
-		console.log(`[pages] ${accountId}: ${projects.length} projetos verificados, ${notified} falhas avisadas.`);
+		console.log(
+			`[pages] ${accountId}: ${projects.length} projetos verificados, ${notified} falhas avisadas, ${resolved} resolvidas.`,
+		);
 	}
 }

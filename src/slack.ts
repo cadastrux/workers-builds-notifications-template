@@ -231,11 +231,11 @@ export function buildSlackPayload(
 export async function sendSlackNotification(
 	webhookUrl: string,
 	payload: SlackPayload,
-): Promise<void> {
+): Promise<string | null> {
 	// Discord: envia no formato nativo (o endpoint /slack do Discord não entende Block Kit)
-	const discord = /^https:\/\/(?:\w+\.)?discord(?:app)?\.com\/api\/webhooks\//.test(webhookUrl);
-	const url = discord ? webhookUrl.replace(/\/slack\/?$/, "") : webhookUrl;
-	const body = discord ? toDiscordPayload(payload) : payload;
+	const discordBase = discordWebhookBase(webhookUrl);
+	const url = discordBase ? `${discordBase}?wait=true` : webhookUrl;
+	const body = discordBase ? toDiscordPayload(payload) : payload;
 
 	const response = await fetch(url, {
 		method: "POST",
@@ -245,7 +245,35 @@ export async function sendSlackNotification(
 
 	if (!response.ok) {
 		console.error("Slack API error:", response.status, await response.text());
+		return null;
 	}
+
+	// Discord com ?wait=true devolve a mensagem criada; guardamos o id para apagar depois
+	if (discordBase) {
+		try {
+			const msg = (await response.json()) as { id?: string };
+			return msg.id ?? null;
+		} catch {
+			return null;
+		}
+	}
+	return null;
+}
+
+/** URL base do webhook do Discord (sem /slack), ou null se não for Discord. */
+export function discordWebhookBase(webhookUrl: string): string | null {
+	if (!/^https:\/\/(?:\w+\.)?discord(?:app)?\.com\/api\/webhooks\//.test(webhookUrl)) return null;
+	return webhookUrl.replace(/\?.*$/, "").replace(/\/slack\/?$/, "").replace(/\/$/, "");
+}
+
+/** Apaga uma mensagem enviada pelo webhook do Discord. 404 = já foi apagada. */
+export async function deleteWebhookMessage(webhookUrl: string, messageId: string): Promise<boolean> {
+	const base = discordWebhookBase(webhookUrl);
+	if (!base) return false;
+	const res = await fetch(`${base}/messages/${messageId}`, { method: "DELETE" });
+	if (res.ok || res.status === 404) return true;
+	console.error("Discord delete error:", res.status, await res.text());
+	return false;
 }
 
 // =============================================================================

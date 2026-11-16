@@ -17,6 +17,8 @@ export default defineConfig({
 				bindings: {
 					SLACK_WEBHOOK_URL: "https://hooks.slack.com/test",
 					CLOUDFLARE_API_TOKEN: "test-api-token",
+					// Mantém os testes originais de mensagens de sucesso
+					NOTIFY_SUCCESS: "true",
 				},
 			},
 			wrangler: {
