@@ -232,13 +232,52 @@ export async function sendSlackNotification(
 	webhookUrl: string,
 	payload: SlackPayload,
 ): Promise<void> {
-	const response = await fetch(webhookUrl, {
+	// Discord: envia no formato nativo (o endpoint /slack do Discord não entende Block Kit)
+	const discord = /^https:\/\/(?:\w+\.)?discord(?:app)?\.com\/api\/webhooks\//.test(webhookUrl);
+	const url = discord ? webhookUrl.replace(/\/slack\/?$/, "") : webhookUrl;
+	const body = discord ? toDiscordPayload(payload) : payload;
+
+	const response = await fetch(url, {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify(payload),
+		body: JSON.stringify(body),
 	});
 
 	if (!response.ok) {
 		console.error("Slack API error:", response.status, await response.text());
 	}
+}
+
+// =============================================================================
+// DISCORD
+// =============================================================================
+
+/** Converte mrkdwn do Slack para markdown do Discord. */
+function mrkdwnToDiscord(text: string): string {
+	return text
+		.replace(/<([^|>]+)\|([^>]+)>/g, "[$2]($1)")
+		.replace(/(^|[^*\w`])\*([^*\n]+)\*(?![*\w])/g, "$1**$2**");
+}
+
+/** Converte o payload Block Kit em uma mensagem simples do Discord. */
+export function toDiscordPayload(payload: SlackPayload): { content: string } {
+	const parts: string[] = [];
+	for (const block of payload.blocks) {
+		if (block.type === "section") {
+			const section = block as SectionBlock;
+			if (section.text?.text) parts.push(mrkdwnToDiscord(section.text.text));
+			const acc = section.accessory as Button | undefined;
+			if (acc?.type === "button" && acc.url) {
+				parts.push(`[${acc.text.text}](<${acc.url}>)`);
+			}
+		} else if (block.type === "context") {
+			const texts = (block as ContextBlock).elements
+				.map((e) => ("text" in e && typeof e.text === "string" ? mrkdwnToDiscord(e.text) : ""))
+				.filter(Boolean);
+			if (texts.length) parts.push(texts.join("  ·  "));
+		}
+	}
+	let content = parts.join("\n");
+	if (content.length > 2000) content = content.slice(0, 1990) + "\n…";
+	return { content };
 }

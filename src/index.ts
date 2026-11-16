@@ -16,12 +16,37 @@ import type { Env, CloudflareEvent } from "./types";
 import { getBuildStatus } from "./helpers";
 import { fetchBuildUrls, fetchBuildLogs } from "./api";
 import { buildSlackPayload, sendSlackNotification } from "./slack";
-import { syncSubscriptions } from "./subscriptions";
+import { Budget, getAccountIds, syncSubscriptions } from "./subscriptions";
+import { checkPagesFailures } from "./pages";
+
+/** Intervalo do cron (wrangler.jsonc: "*\/5 * * * *"). */
+const CRON_INTERVAL_MS = 5 * 60 * 1000;
+
+async function runScheduled(env: Env, scheduledTime: number): Promise<void> {
+	if (!env.CLOUDFLARE_API_TOKEN) {
+		console.error("[cron] CLOUDFLARE_API_TOKEN não configurado");
+		return;
+	}
+	const budget = new Budget();
+	try {
+		const accountIds = await getAccountIds(env, budget);
+
+		// Pages: falhas desde a execução anterior
+		await checkPagesFailures(env, budget, accountIds, scheduledTime - CRON_INTERVAL_MS, scheduledTime);
+
+		// Workers Builds: novas assinaturas a cada 15 min
+		if (new Date(scheduledTime).getUTCMinutes() % 15 === 0) {
+			await syncSubscriptions(env, budget, accountIds);
+		}
+	} catch (error) {
+		console.error("[cron] Erro:", error);
+	}
+}
 
 export default {
-	/** Cron: cria assinaturas para Workers novos (ver src/subscriptions.ts). */
-	async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-		ctx.waitUntil(syncSubscriptions(env));
+	/** Cron: avisa falhas do Pages e cria assinaturas para Workers novos. */
+	async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+		ctx.waitUntil(runScheduled(env, controller.scheduledTime));
 	},
 
 	async queue(batch: MessageBatch<CloudflareEvent>, env: Env): Promise<void> {

@@ -48,7 +48,7 @@ interface Queue {
 	queue_name: string;
 }
 
-class Budget {
+export class Budget {
 	used = 0;
 	take(): boolean {
 		if (this.used >= MAX_REQUESTS) return false;
@@ -57,7 +57,7 @@ class Budget {
 	}
 }
 
-async function cf<T>(
+export async function cf<T>(
 	env: Env,
 	budget: Budget,
 	path: string,
@@ -81,11 +81,11 @@ async function cf<T>(
 	return { status: res.status, body };
 }
 
-function describe(body: CfResponse<unknown> | null): string {
+export function describe(body: CfResponse<unknown> | null): string {
 	return body?.errors?.map((e) => `${e.code}: ${e.message}`).join("; ") || "sem detalhes";
 }
 
-async function getAccountIds(env: Env, budget: Budget): Promise<string[]> {
+export async function getAccountIds(env: Env, budget: Budget): Promise<string[]> {
 	if (env.ACCOUNT_ID) return [env.ACCOUNT_ID];
 	const { body } = await cf<{ id: string }[]>(env, budget, "/accounts?per_page=50");
 	if (!body?.success) {
@@ -194,14 +194,17 @@ async function syncAccount(env: Env, budget: Budget, accountId: string): Promise
 	);
 }
 
-export async function syncSubscriptions(env: Env): Promise<void> {
+export async function syncSubscriptions(
+	env: Env,
+	budget: Budget = new Budget(),
+	accountIds?: string[],
+): Promise<void> {
 	if (!env.CLOUDFLARE_API_TOKEN) {
 		console.error("[auto-subscribe] CLOUDFLARE_API_TOKEN não configurado");
 		return;
 	}
-	const budget = new Budget();
 	try {
-		for (const accountId of await getAccountIds(env, budget)) {
+		for (const accountId of accountIds ?? (await getAccountIds(env, budget))) {
 			await syncAccount(env, budget, accountId);
 		}
 	} catch (error) {

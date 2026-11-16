@@ -12,11 +12,11 @@
 		"enabled": true
 	},
 	/**
-	 * Auto-subscribe: a cada 15 min cria Event Subscriptions para Workers
-	 * novos com Workers Builds (ver src/subscriptions.ts).
+	 * A cada 5 min: avisa falhas do Pages; a cada 15 min: cria Event Subscriptions para Workers
+	 * novos com Workers Builds (ver src/pages.ts e src/subscriptions.ts).
 	 */
 	"triggers": {
-		"crons": ["*/15 * * * *"]
+		"crons": ["*/5 * * * *"]
 	},
 	"assets": {
 		"directory": "./public"
