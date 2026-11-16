@@ -11,6 +11,13 @@
 	"observability": {
 		"enabled": true
 	},
+	/**
+	 * Auto-subscribe: a cada 15 min cria Event Subscriptions para Workers
+	 * novos com Workers Builds (ver src/subscriptions.ts).
+	 */
+	"triggers": {
+		"crons": ["*/15 * * * *"]
+	},
 	"assets": {
 		"directory": "./public"
 	},

@@ -9,6 +9,8 @@
 export interface Env {
 	SLACK_WEBHOOK_URL: string;
 	CLOUDFLARE_API_TOKEN: string;
+	/** Opcional: ID da conta. Se vazio, o auto-subscribe lista as contas do token. */
+	ACCOUNT_ID?: string;
 }
 
 // =============================================================================

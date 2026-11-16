@@ -16,8 +16,14 @@ import type { Env, CloudflareEvent } from "./types";
 import { getBuildStatus } from "./helpers";
 import { fetchBuildUrls, fetchBuildLogs } from "./api";
 import { buildSlackPayload, sendSlackNotification } from "./slack";
+import { syncSubscriptions } from "./subscriptions";
 
 export default {
+	/** Cron: cria assinaturas para Workers novos (ver src/subscriptions.ts). */
+	async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+		ctx.waitUntil(syncSubscriptions(env));
+	},
+
 	async queue(batch: MessageBatch<CloudflareEvent>, env: Env): Promise<void> {
 		if (!env.SLACK_WEBHOOK_URL) {
 			console.error("SLACK_WEBHOOK_URL is not configured");

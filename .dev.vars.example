@@ -7,4 +7,9 @@ SLACK_WEBHOOK_URL=
 # Required permissions:
 #   - Workers Builds Configuration: Read
 #   - Workers Scripts: Read
+#   - Queues: Edit              (auto-subscribe: cria assinaturas)
+#   - Account Settings: Read    (auto-subscribe: só se ACCOUNT_ID ficar vazio)
 CLOUDFLARE_API_TOKEN=
+
+# Opcional: ID da conta Cloudflare usada pelo auto-subscribe
+ACCOUNT_ID=
