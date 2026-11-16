@@ -24,14 +24,18 @@ export function pendingKey(kind: Kind, accountId: string, name: string): string 
 export async function listPending(env: Env, kind: Kind, accountId: string): Promise<Map<string, PendingMeta>> {
 	const out = new Map<string, PendingMeta>();
 	if (!env.STATE) return out;
-	let cursor: string | undefined;
-	do {
-		const page = await env.STATE.list<PendingMeta>({ prefix: `msg:${kind}:${accountId}:`, cursor });
-		for (const k of page.keys) {
-			if (k.metadata?.messageId) out.set(k.name, k.metadata);
-		}
-		cursor = page.list_complete ? undefined : page.cursor;
-	} while (cursor);
+	try {
+		let cursor: string | undefined;
+		do {
+			const page = await env.STATE.list<PendingMeta>({ prefix: `msg:${kind}:${accountId}:`, cursor });
+			for (const k of page.keys) {
+				if (k.metadata?.messageId) out.set(k.name, k.metadata);
+			}
+			cursor = page.list_complete ? undefined : page.cursor;
+		} while (cursor);
+	} catch (error) {
+		console.error("[state] Erro ao listar KV (avisos continuam, só não apaga):", error);
+	}
 	return out;
 }
 
@@ -41,11 +45,16 @@ export async function listPending(env: Env, kind: Kind, accountId: string): Prom
  */
 export async function resolvePending(env: Env, key: string, knownMessageId?: string): Promise<boolean> {
 	if (!env.STATE) return false;
-	const messageId = knownMessageId ?? (await env.STATE.get(key));
-	if (!messageId) return false;
-	const deleted = await deleteWebhookMessage(env.SLACK_WEBHOOK_URL, messageId);
-	if (deleted) await env.STATE.delete(key);
-	return deleted;
+	try {
+		const messageId = knownMessageId ?? (await env.STATE.get(key));
+		if (!messageId) return false;
+		const deleted = await deleteWebhookMessage(env.SLACK_WEBHOOK_URL, messageId);
+		if (deleted) await env.STATE.delete(key);
+		return deleted;
+	} catch (error) {
+		console.error(`[state] Erro ao apagar mensagem de ${key}:`, error);
+		return false;
+	}
 }
 
 /**
@@ -59,7 +68,11 @@ export async function rememberFailure(
 	environment?: string,
 ): Promise<void> {
 	if (!env.STATE || !messageId) return;
-	await resolvePending(env, key);
-	const meta: PendingMeta = { messageId, ...(environment ? { environment } : {}) };
-	await env.STATE.put(key, messageId, { metadata: meta });
+	try {
+		await resolvePending(env, key);
+		const meta: PendingMeta = { messageId, ...(environment ? { environment } : {}) };
+		await env.STATE.put(key, messageId, { metadata: meta });
+	} catch (error) {
+		console.error(`[state] Erro ao guardar mensagem de ${key}:`, error);
+	}
 }
