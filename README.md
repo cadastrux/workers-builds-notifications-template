@@ -60,8 +60,11 @@ Faça os passos abaixo **uma vez em cada conta**. O código vem deste repositór
    | Configurações da conta (*Account Settings*) | Lido | descobrir o ID da conta |
    | Cloudflare Pages | Lido | listar projetos Pages e ler logs de build |
 
-4. **Recursos da conta** (*Account Resources*): **Incluir → a conta que você está configurando**.
-   - Não use "Todas as contas" nas contas novas: veja [Avisos duplicados](#avisos-duplicados).
+4. **Conta do token**: no topo de cada bloco de política aparece **Incluir → Todas as contas**.
+   - Se o seu login **só tem acesso a esta conta** (o caso normal), **pode deixar "Todas as contas"**: na prática, é só esta conta.
+   - Se o login tiver acesso a **várias contas**, escolha só a conta que você está configurando.
+   - Nos dois casos, crie também o segredo **`ACCOUNT_ID`** no passo 4. Ele garante que o observador vigie só esta conta, mesmo que o login ganhe acesso a outra conta no futuro. Veja [Avisos duplicados](#avisos-duplicados).
+   - É **um token por conta** (não por site): ele cobre todos os sites da conta, inclusive os novos.
 5. Sem expiração e sem filtro de IP. Clique em **Continuar → Criar token** e **copie o token** (ele só aparece uma vez).
 
 ### Passo 3: Importar o Worker do GitHub
@@ -177,7 +180,9 @@ Procure no **Observability** do Worker as linhas `[pages]`, `[auto-subscribe]`, 
 
 Se o mesmo erro chegar duas vezes no Discord, o token de uma conta tem acesso a **mais de uma conta**, e cada observador está vigiando as outras também.
 
-**Solução:** crie o segredo **`ACCOUNT_ID`** em cada conta (passo 4) e/ou limite o token à própria conta (passo 2, item 4).
+Isso só acontece se o login que criou o token tiver acesso a mais de uma conta.
+
+**Solução:** crie o segredo **`ACCOUNT_ID`** em cada conta (passo 4). Opcionalmente, limite o token à própria conta (passo 2, item 4).
 
 ### O aviso não chegou
 
